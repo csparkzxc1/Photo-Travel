@@ -61,3 +61,17 @@ export interface RankingRow {
   nickname: string;
   visitedRegionCount: number;
 }
+
+export interface FriendRow {
+  userId: string;
+  nickname: string;
+  email: string;
+  since: string;
+}
+
+export interface CompanionMatch {
+  userId: string;
+  nickname: string;
+  overlapCount: number;
+  overlapDays: number;
+}

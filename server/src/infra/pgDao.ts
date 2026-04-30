@@ -1,9 +1,12 @@
 import { and, desc, eq, sql } from 'drizzle-orm';
 import type { Db } from '../db/client.js';
-import { regions, trips, users, visits } from '../db/schema.js';
+import { friendships, regions, trips, users, visits } from '../db/schema.js';
 import { aggregateVisits, diffVisits } from '../domain/visits.js';
+import { findCompanions } from '../domain/companions.js';
 import type { Dao } from '../domain/dao.js';
 import type {
+  CompanionMatch,
+  FriendRow,
   PhotoRow,
   PhotoUpload,
   RankingRow,
@@ -199,6 +202,127 @@ export function createPgDao(db: Db): Dao {
         photoCount: t.photoCount,
         videoCount: t.videoCount,
         isSignificant: t.isSignificant,
+      }));
+    },
+
+    async listFriends(userId): Promise<FriendRow[]> {
+      const rows = await db.execute<{
+        user_id: string;
+        nickname: string;
+        email: string;
+        since: Date;
+      } & Record<string, unknown>>(sql`
+        SELECT u.id AS user_id, u.nickname, u.email, f.created_at AS since
+        FROM friendships f
+        JOIN users u ON u.id = f.friend_id
+        WHERE f.user_id = ${userId}::uuid
+        ORDER BY f.created_at DESC
+      `);
+      return rows.map((r) => ({
+        userId: r.user_id,
+        nickname: r.nickname,
+        email: r.email,
+        since: r.since.toISOString(),
+      }));
+    },
+
+    async addFriendByEmail(userId, email): Promise<FriendRow | null> {
+      const [target] = await db.select().from(users).where(eq(users.email, email)).limit(1);
+      if (!target || target.id === userId) return null;
+      await db
+        .insert(friendships)
+        .values({ userId, friendId: target.id })
+        .onConflictDoNothing();
+      return {
+        userId: target.id,
+        nickname: target.nickname,
+        email: target.email,
+        since: new Date().toISOString(),
+      };
+    },
+
+    async removeFriend(userId, friendId): Promise<boolean> {
+      const result = await db.execute<Record<string, unknown>>(sql`
+        DELETE FROM friendships
+        WHERE user_id = ${userId}::uuid AND friend_id = ${friendId}::uuid
+        RETURNING user_id
+      `);
+      return result.length > 0;
+    },
+
+    async suggestCompanions(userId, opts = {}): Promise<CompanionMatch[]> {
+      const { maxGapMinutes = 30, maxDistanceKm = 0.5, minOverlaps = 3 } = opts;
+
+      // Pull my photos and my friends' photos in two queries — companion
+      // detection is small enough to run in-process. For users with millions
+      // of photos we'd push this into PostGIS via ST_DWithin + a temporal
+      // self-join, but the in-memory algorithm is also covered by the same
+      // unit tests, which makes this swap straightforward later.
+      const myPhotos = await db.execute<{
+        id: string;
+        taken_at: Date;
+        lat: number;
+        lng: number;
+      } & Record<string, unknown>>(sql`
+        SELECT id, taken_at, ST_Y(location::geometry) AS lat, ST_X(location::geometry) AS lng
+        FROM photos WHERE user_id = ${userId}::uuid
+      `);
+
+      const friendsAndPhotos = await db.execute<{
+        friend_id: string;
+        nickname: string;
+        photo_id: string | null;
+        taken_at: Date | null;
+        lat: number | null;
+        lng: number | null;
+      } & Record<string, unknown>>(sql`
+        SELECT u.id AS friend_id, u.nickname,
+               p.id AS photo_id, p.taken_at,
+               ST_Y(p.location::geometry) AS lat, ST_X(p.location::geometry) AS lng
+        FROM friendships f
+        JOIN users u ON u.id = f.friend_id
+        LEFT JOIN photos p ON p.user_id = u.id
+        WHERE f.user_id = ${userId}::uuid
+      `);
+
+      const grouped = new Map<string, { id: string; nickname: string; photos: Array<{ id: string; takenAt: string; lat: number; lng: number }> }>();
+      for (const row of friendsAndPhotos) {
+        const entry = grouped.get(row.friend_id) ?? {
+          id: row.friend_id,
+          nickname: row.nickname,
+          photos: [],
+        };
+        if (row.photo_id && row.taken_at && row.lat !== null && row.lng !== null) {
+          entry.photos.push({
+            id: row.photo_id,
+            takenAt: row.taken_at.toISOString(),
+            lat: Number(row.lat),
+            lng: Number(row.lng),
+          });
+        }
+        grouped.set(row.friend_id, entry);
+      }
+
+      const matches = findCompanions(
+        myPhotos.map((p) => ({
+          id: p.id,
+          takenAt: p.taken_at.toISOString(),
+          lat: Number(p.lat),
+          lng: Number(p.lng),
+        })),
+        Array.from(grouped.values()),
+        {
+          maxGapMs: maxGapMinutes * 60_000,
+          maxDistanceKm,
+          minOverlaps,
+        }
+      );
+
+      return matches.map((m) => ({
+        userId: m.id,
+        nickname: m.nickname,
+        overlapCount: m.overlapCount,
+        overlapDays: m.overlapDays,
       }));
     },
 

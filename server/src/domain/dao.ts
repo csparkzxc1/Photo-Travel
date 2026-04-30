@@ -1,4 +1,6 @@
 import type {
+  CompanionMatch,
+  FriendRow,
   PhotoRow,
   PhotoUpload,
   RankingRow,
@@ -45,4 +47,17 @@ export interface Dao {
 
   // ─── Ranking ─────────────────────────────────────────────────────
   rankFriendsByVisitCount(userId: string): Promise<RankingRow[]>;
+
+  // ─── Friends ─────────────────────────────────────────────────────
+  listFriends(userId: string): Promise<FriendRow[]>;
+  addFriendByEmail(userId: string, email: string): Promise<FriendRow | null>;
+  removeFriend(userId: string, friendId: string): Promise<boolean>;
+
+  // ─── Companions ──────────────────────────────────────────────────
+  /** Returns friends whose photos co-occur with the user's photos in time+space. */
+  suggestCompanions(userId: string, opts?: {
+    maxGapMinutes?: number;
+    maxDistanceKm?: number;
+    minOverlaps?: number;
+  }): Promise<CompanionMatch[]>;
 }

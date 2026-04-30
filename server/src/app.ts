@@ -8,6 +8,8 @@ import { visitsRoutes } from './routes/visits.js';
 import { tripsRoutes } from './routes/trips.js';
 import { regionsRoutes } from './routes/regions.js';
 import { rankingRoutes } from './routes/ranking.js';
+import { friendsRoutes } from './routes/friends.js';
+import { companionsRoutes } from './routes/companions.js';
 import type { Dao } from './domain/dao.js';
 
 export interface BuildAppOptions {
@@ -64,6 +66,8 @@ export async function buildApp({
     await tripsRoutes(scoped, { dao });
     await regionsRoutes(scoped, { dao });
     await rankingRoutes(scoped, { dao });
+    await friendsRoutes(scoped, { dao });
+    await companionsRoutes(scoped, { dao });
   });
 
   app.setErrorHandler((err, req, reply) => {

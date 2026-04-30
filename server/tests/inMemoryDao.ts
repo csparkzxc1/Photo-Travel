@@ -1,6 +1,8 @@
 import { randomUUID } from 'node:crypto';
 import type { Dao } from '../src/domain/dao.js';
 import type {
+  CompanionMatch,
+  FriendRow,
   PhotoRow,
   PhotoUpload,
   RankingRow,
@@ -134,6 +136,89 @@ export class InMemoryDao implements Dao {
     return [...list]
       .sort((a, b) => b.startDate.localeCompare(a.startDate))
       .slice(0, limit);
+  }
+
+  async listFriends(userId: string): Promise<FriendRow[]> {
+    return this.friendships
+      .filter((f) => f.userId === userId)
+      .map((f) => {
+        const user = this.users.get(f.friendId);
+        if (!user) return null;
+        return {
+          userId: user.id,
+          nickname: user.nickname,
+          email: user.email,
+          since: new Date(0).toISOString(),
+        } satisfies FriendRow;
+      })
+      .filter((r): r is FriendRow => r !== null);
+  }
+
+  async addFriendByEmail(userId: string, email: string): Promise<FriendRow | null> {
+    const user = this.usersByEmail.get(email);
+    if (!user || user.id === userId) return null;
+    if (!this.friendships.some((f) => f.userId === userId && f.friendId === user.id)) {
+      this.friendships.push({ userId, friendId: user.id });
+    }
+    return {
+      userId: user.id,
+      nickname: user.nickname,
+      email: user.email,
+      since: new Date().toISOString(),
+    };
+  }
+
+  async removeFriend(userId: string, friendId: string): Promise<boolean> {
+    const before = this.friendships.length;
+    this.friendships = this.friendships.filter(
+      (f) => !(f.userId === userId && f.friendId === friendId)
+    );
+    return this.friendships.length < before;
+  }
+
+  async suggestCompanions(
+    userId: string,
+    opts: { maxGapMinutes?: number; maxDistanceKm?: number; minOverlaps?: number } = {}
+  ): Promise<CompanionMatch[]> {
+    const { maxGapMinutes = 30, maxDistanceKm = 0.5, minOverlaps = 3 } = opts;
+    const myPhotos = (this.photosByUser.get(userId) ?? []).map((p) => ({
+      id: p.id,
+      takenAt: p.takenAt,
+      lat: p.lat,
+      lng: p.lng,
+    }));
+    if (myPhotos.length === 0) return [];
+
+    const friendIds = this.friendships
+      .filter((f) => f.userId === userId)
+      .map((f) => f.friendId);
+
+    const { findCompanions } = await import('../src/domain/companions.js');
+    const candidates = friendIds
+      .map((id) => {
+        const u = this.users.get(id);
+        if (!u) return null;
+        const photos = (this.photosByUser.get(id) ?? []).map((p) => ({
+          id: p.id,
+          takenAt: p.takenAt,
+          lat: p.lat,
+          lng: p.lng,
+        }));
+        return { id: u.id, nickname: u.nickname, photos };
+      })
+      .filter((c): c is { id: string; nickname: string; photos: typeof myPhotos } => c !== null);
+
+    const matches = findCompanions(myPhotos, candidates, {
+      maxGapMs: maxGapMinutes * 60_000,
+      maxDistanceKm,
+      minOverlaps,
+    });
+    return matches.map((m) => ({
+      userId: m.id,
+      nickname: m.nickname,
+      overlapCount: m.overlapCount,
+      overlapDays: m.overlapDays,
+    }));
   }
 
   async rankFriendsByVisitCount(userId: string): Promise<RankingRow[]> {
