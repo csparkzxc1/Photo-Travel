@@ -7,19 +7,39 @@ import { useTheme } from '@design/ThemeProvider';
 import { spacing, typography } from '@design/tokens';
 import { useAppStore } from '@data/store';
 import { syncFromGallery } from '@features/sync/photoSync';
+import {
+  registerBackgroundSync,
+  unregisterBackgroundSync,
+} from '@features/sync/backgroundSync';
 
 export function SettingsScreen() {
   const { theme } = useTheme();
   const status = useAppStore((s) => s.syncStatus);
   const isMockData = useAppStore((s) => s.isMockData);
   const photoCount = useAppStore((s) => s.photos.length);
+  const bgEnabled = useAppStore((s) => s.backgroundSyncEnabled);
+  const lastBgRun = useAppStore((s) => s.lastBackgroundRunAt);
   const reset = useAppStore((s) => s.reset);
   const [busy, setBusy] = useState(false);
+  const [bgBusy, setBgBusy] = useState(false);
 
   const handleSync = async () => {
     setBusy(true);
     await syncFromGallery();
     setBusy(false);
+  };
+
+  const handleBgToggle = async (next: boolean) => {
+    setBgBusy(true);
+    if (next) {
+      const ok = await registerBackgroundSync();
+      if (!ok) {
+        Alert.alert('백그라운드 동기화 불가', '시스템 설정에서 백그라운드 새로고침을 허용해주세요.');
+      }
+    } else {
+      await unregisterBackgroundSync();
+    }
+    setBgBusy(false);
   };
 
   const handleReset = () => {
@@ -49,7 +69,27 @@ export function SettingsScreen() {
             )}
           </Pressable>
           <SettingRow label="갤러리 동기화 주기" value="실시간" isLast={false} />
-          <SettingRow label="백그라운드 동기화" toggle={true} isLast={false} />
+          <View
+            style={[
+              styles.row,
+              styles.rowBorder,
+              { borderBottomColor: theme.border },
+            ]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.body, { color: theme.text }]}>백그라운드 동기화</Text>
+              <Text style={[typography.caption, { color: theme.textMuted, marginTop: 2 }]}>
+                {bgEnabled
+                  ? `마지막 실행: ${lastBgRun ? formatTime(lastBgRun) : '대기 중'}`
+                  : '6시간마다 새 사진 자동 동기화'}
+              </Text>
+            </View>
+            {bgBusy ? (
+              <ActivityIndicator color={theme.primary} />
+            ) : (
+              <Switch value={bgEnabled} onValueChange={handleBgToggle} />
+            )}
+          </View>
           <SettingRow label="셀룰러 데이터 사용" toggle={false} isLast={true} />
         </Card>
 

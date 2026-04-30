@@ -1,4 +1,7 @@
 import 'react-native-gesture-handler';
+// Side-effect import: defines the background-fetch task at JS root so the OS
+// can wake the app on schedule. See features/sync/backgroundSync.ts.
+import '@features/sync/backgroundSync';
 import React from 'react';
 import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';

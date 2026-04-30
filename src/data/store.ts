@@ -2,7 +2,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { Country, Photo, Region, Trip, Visit } from '@core/types';
-import { processAssets, RawAsset } from '@core/photoProcessor';
+import { mergeAssets, processAssets, RawAsset } from '@core/photoProcessor';
 import { COUNTRIES, DEFAULT_COUNTRY } from './countries';
 import { KR_LEVEL1_REGIONS } from './koreaRegions';
 import { KR_LEVEL2_REGIONS } from './koreaSigungu';
@@ -36,19 +36,37 @@ interface AppState {
   onboarded: boolean;
   isMockData: boolean;
 
+  /** Newest creationTime (ms) we've ever ingested — used for delta sync. */
+  lastSyncedAtMs: number | null;
+  /** Wall-clock time of the last *background* sync attempt (success or empty). */
+  lastBackgroundRunAt: string | null;
+  backgroundSyncEnabled: boolean;
+
   setCountry: (code: string) => void;
   setRegionLevel: (level: RegionLevelChoice) => void;
   setYearFilter: (year: number | 'all') => void;
   setMapMode: (mode: MapMode) => void;
   setMapLens: (lens: MapLens) => void;
+  setBackgroundSyncEnabled: (on: boolean) => void;
+  markBackgroundRun: (at: string) => void;
   markOnboarded: () => void;
   hydrateMockData: () => void;
+  /** Replace-all ingest (foreground full sync). */
   ingestAssets: (assets: RawAsset[]) => void;
+  /** Incremental merge ingest (background delta sync). */
+  ingestDelta: (assets: RawAsset[]) => { added: number };
   setSyncStatus: (status: SyncStatus) => void;
   reset: () => void;
 }
 
 const USER_ID = 'demo_user';
+
+function maxCreationTime(assets: RawAsset[]): number | null {
+  if (assets.length === 0) return null;
+  let max = 0;
+  for (const a of assets) if (a.creationTime > max) max = a.creationTime;
+  return max;
+}
 
 const initial = {
   countries: COUNTRIES,
@@ -66,6 +84,9 @@ const initial = {
   syncStatus: { kind: 'idle' } as SyncStatus,
   onboarded: false,
   isMockData: false,
+  lastSyncedAtMs: null as number | null,
+  lastBackgroundRunAt: null as string | null,
+  backgroundSyncEnabled: false,
 };
 
 export const useAppStore = create<AppState>()(
@@ -78,6 +99,8 @@ export const useAppStore = create<AppState>()(
       setYearFilter: (year) => set({ yearFilter: year }),
       setMapMode: (mode) => set({ mapMode: mode }),
       setMapLens: (lens) => set({ mapLens: lens }),
+      setBackgroundSyncEnabled: (on) => set({ backgroundSyncEnabled: on }),
+      markBackgroundRun: (at) => set({ lastBackgroundRunAt: at }),
       markOnboarded: () => set({ onboarded: true }),
 
       hydrateMockData: () => {
@@ -111,6 +134,7 @@ export const useAppStore = create<AppState>()(
           trips: result.trips,
           visits: result.visits,
           isMockData: false,
+          lastSyncedAtMs: maxCreationTime(assets),
           syncStatus: {
             kind: 'success',
             at: new Date().toISOString(),
@@ -119,6 +143,32 @@ export const useAppStore = create<AppState>()(
             total: result.stats.total,
           },
         });
+      },
+
+      ingestDelta: (assets) => {
+        if (assets.length === 0) {
+          set({ lastBackgroundRunAt: new Date().toISOString() });
+          return { added: 0 };
+        }
+        const state = get();
+        const regions = leafRegions(state);
+        const result = mergeAssets(state.photos, assets, {
+          userId: USER_ID,
+          regions,
+        });
+        const added = result.photos.length - state.photos.length;
+        set({
+          photos: result.photos,
+          trips: result.trips,
+          visits: result.visits,
+          isMockData: false,
+          lastSyncedAtMs: Math.max(
+            state.lastSyncedAtMs ?? 0,
+            maxCreationTime(assets) ?? 0
+          ),
+          lastBackgroundRunAt: new Date().toISOString(),
+        });
+        return { added: Math.max(0, added) };
       },
 
       setSyncStatus: (status) => set({ syncStatus: status }),
@@ -130,6 +180,8 @@ export const useAppStore = create<AppState>()(
           visits: [],
           isMockData: false,
           syncStatus: { kind: 'idle' },
+          lastSyncedAtMs: null,
+          lastBackgroundRunAt: null,
         }),
     }),
     {
@@ -146,8 +198,11 @@ export const useAppStore = create<AppState>()(
         yearFilter: state.yearFilter,
         onboarded: state.onboarded,
         isMockData: state.isMockData,
+        lastSyncedAtMs: state.lastSyncedAtMs,
+        lastBackgroundRunAt: state.lastBackgroundRunAt,
+        backgroundSyncEnabled: state.backgroundSyncEnabled,
       }),
-      version: 2,
+      version: 3,
     }
   )
 );

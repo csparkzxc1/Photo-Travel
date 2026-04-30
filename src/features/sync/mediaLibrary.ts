@@ -19,6 +19,11 @@ export interface FetchOptions {
   pageSize?: number;
   /** Optional callback for incremental UI updates. */
   onProgress?: (loaded: number, total: number | null) => void;
+  /**
+   * If provided, only assets with creationTime > this epoch ms are returned.
+   * Used for background sync to fetch the delta since last successful run.
+   */
+  createdAfter?: number;
 }
 
 /**
@@ -30,19 +35,31 @@ export interface FetchOptions {
  * caller can render progress.
  */
 export async function fetchGpsAssets(opts: FetchOptions = {}): Promise<RawAsset[]> {
-  const { maxPages = 5, pageSize = 200, onProgress } = opts;
+  const { maxPages = 5, pageSize = 200, onProgress, createdAfter } = opts;
 
   const result: RawAsset[] = [];
   let after: string | undefined;
   let loaded = 0;
+  let earlyExit = false;
 
-  for (let page = 0; page < maxPages; page += 1) {
+  for (let page = 0; page < maxPages && !earlyExit; page += 1) {
     const batch = await MediaLibrary.getAssetsAsync({
       mediaType: 'photo',
       first: pageSize,
       after,
       sortBy: [['creationTime', false]],
     });
+
+    // When polling for "what's new since last sync", we walk the library
+    // newest-first and stop as soon as we hit something older than the
+    // watermark — pages beyond that point are guaranteed to be older too.
+    if (createdAfter !== undefined) {
+      const stopIdx = batch.assets.findIndex((a) => a.creationTime <= createdAfter);
+      if (stopIdx !== -1) {
+        batch.assets = batch.assets.slice(0, stopIdx);
+        earlyExit = true;
+      }
+    }
 
     const enriched = await Promise.all(
       batch.assets.map(async (a) => {
@@ -70,7 +87,7 @@ export async function fetchGpsAssets(opts: FetchOptions = {}): Promise<RawAsset[
     loaded += batch.assets.length;
     onProgress?.(loaded, batch.totalCount ?? null);
 
-    if (!batch.hasNextPage || !batch.endCursor) break;
+    if (earlyExit || !batch.hasNextPage || !batch.endCursor) break;
     after = batch.endCursor;
   }
 

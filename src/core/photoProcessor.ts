@@ -90,6 +90,57 @@ export function processAssets(
   };
 }
 
+/**
+ * Incremental merge: takes the existing photos plus a batch of new RawAssets
+ * (e.g. from a background fetch) and returns the same shape as `processAssets`,
+ * with everything re-clustered. New assets that share an id with an existing
+ * photo overwrite the old entry (so corrected GPS / metadata propagates).
+ *
+ * This function is idempotent: feeding it the same batch twice produces the
+ * same result — important for at-least-once background task semantics.
+ */
+export function mergeAssets(
+  existing: Photo[],
+  newAssets: RawAsset[],
+  opts: ProcessOptions
+): ProcessResult {
+  const fresh = processAssets(newAssets, opts);
+  if (existing.length === 0) return fresh;
+
+  const byId = new Map<string, Photo>();
+  for (const p of existing) byId.set(p.id, p);
+  for (const p of fresh.photos) byId.set(p.id, p); // new wins on conflict
+
+  const merged = Array.from(byId.values()).sort((a, b) =>
+    a.takenAt.localeCompare(b.takenAt)
+  );
+
+  const trips = clusterTrips(merged, opts.userId);
+  const visits = computeVisits(merged, opts.userId);
+
+  const newCount = fresh.stats.total - countOverlap(existing, newAssets);
+
+  return {
+    photos: merged,
+    trips,
+    visits,
+    stats: {
+      total: newCount > 0 ? newCount : 0,
+      withGps: fresh.stats.withGps,
+      matched: fresh.stats.matched,
+      unmatched: fresh.stats.unmatched,
+    },
+  };
+}
+
+function countOverlap(existing: Photo[], newAssets: RawAsset[]): number {
+  if (existing.length === 0 || newAssets.length === 0) return 0;
+  const ids = new Set(existing.map((p) => p.id));
+  let overlap = 0;
+  for (const a of newAssets) if (ids.has(a.id)) overlap += 1;
+  return overlap;
+}
+
 export function computeVisits(photos: Photo[], userId: string): Visit[] {
   const map = new Map<string, Visit>();
   for (const p of photos) {
