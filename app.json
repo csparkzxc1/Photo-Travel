@@ -1,0 +1,36 @@
+{
+  "expo": {
+    "name": "Photo Travel",
+    "slug": "photo-travel",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "scheme": "phototravel",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.phototravel.app",
+      "infoPlist": {
+        "NSPhotoLibraryUsageDescription": "갤러리 사진의 위치 정보로 여행 지도를 자동으로 만듭니다.",
+        "NSLocationWhenInUseUsageDescription": "현재 위치 기반 지도 표시에 사용됩니다."
+      }
+    },
+    "android": {
+      "package": "com.phototravel.app",
+      "permissions": [
+        "READ_MEDIA_IMAGES",
+        "ACCESS_MEDIA_LOCATION",
+        "ACCESS_FINE_LOCATION"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-media-library",
+        {
+          "photosPermission": "갤러리 사진의 위치 정보로 여행 지도를 자동으로 만듭니다.",
+          "savePhotosPermission": "여행 콜라주를 갤러리에 저장합니다.",
+          "isAccessMediaLocationEnabled": true
+        }
+      ]
+    ]
+  }
+}
