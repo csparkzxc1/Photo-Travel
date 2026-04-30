@@ -1,0 +1,20 @@
+services:
+  postgres:
+    image: postgis/postgis:16-3.4
+    container_name: phototravel-postgres
+    environment:
+      POSTGRES_USER: phototravel
+      POSTGRES_PASSWORD: phototravel
+      POSTGRES_DB: phototravel
+    ports:
+      - "5432:5432"
+    volumes:
+      - phototravel_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U phototravel -d phototravel"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  phototravel_pgdata:

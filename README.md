@@ -6,7 +6,7 @@
 React Native (Expo) + TypeScript 기반이며, 6개 메인 탭과 사진→지역 매칭 / 여행 자동 클러스터링
 핵심 알고리즘이 동작하는 상태로 구현되어 있습니다.
 
-## 현재 구현된 범위 (v0.2.0)
+## 현재 구현된 범위 (v0.3.0)
 
 | 영역 | 상태 |
 |---|---|
@@ -23,8 +23,10 @@ React Native (Expo) + TypeScript 기반이며, 6개 메인 탭과 사진→지�
 | **갤러리 동기화 파이프라인** (expo-media-library + EXIF + 권한 플로우) | ✅ |
 | **온보딩 플로우** (권한 요청 + 진행률 + 스킵) | ✅ |
 | **영구 스토어** (zustand + AsyncStorage) | ✅ |
-| MapLibre 통합 (production map) | ⏳ V0.3 |
-| 백엔드 API + PostGIS | ⏳ V1 |
+| **MapLibre Native** (production GPU 렌더, EXPO_PUBLIC_USE_MAPLIBRE=1로 활성화) | ✅ |
+| **다단계 행정구역** (시도/시군구 토글, 부모 visit propagation) | ✅ |
+| **백그라운드 동기화** (expo-background-fetch + 증분 merge, 6h 주기) | ✅ |
+| **백엔드 API + PostGIS** (Fastify + Drizzle, ST_Contains 매칭, JWT 인증) | ✅ |
 | 콜라주 생성기 / 영상 슬라이드쇼 | ⏳ V1 |
 | 인앱결제 / 광고 | ⏳ V1 |
 | AI 여행 제목 생성 (CLIP / Claude) | ⏳ V2 |
@@ -143,21 +145,28 @@ Zustand store (persist)        ← AsyncStorage에 사진/여행/통계 캐싱
 상태 머신: `idle → requesting → syncing(loaded, total) → success | error`.
 온보딩과 설정 화면이 같은 `syncStatus`를 구독합니다.
 
-## 다음 작업 (V0.3 우선순위)
+## 백엔드
 
-1. **MapLibre 교체**
-   - 현재 `react-native-svg` 기반 단순 렌더 → MapLibre Native
-   - 한국 시군구(229개) GeoJSON 자산 추가 (mapshaper로 단순화, ~5MB)
-   - 히트맵 GPU 셰이더 활성화
+`server/`에 Fastify + Drizzle + PostgreSQL/PostGIS 백엔드가 있습니다.
+서버측 region 매칭은 PostGIS `ST_Contains`(GIST 인덱스)로 수행됩니다.
 
-2. **백그라운드 동기화**
-   - `expo-task-manager` + `expo-background-fetch`
-   - 새 사진 감지 시 증분 처리 (전량 재처리 X)
+```bash
+cd server
+cp .env.example .env
+npm install
+npm run docker:up        # postgres+postgis on :5432
+npm run db:migrate
+npm run dev              # :4000
+npm test                 # 13 tests, no docker needed (in-memory DAO)
+```
 
-3. **백엔드 (Fastify + PostGIS)**
-   - Drizzle 스키마 (User / Photo / Region / Trip / Visit)
-   - `ST_Contains` 기반 서버측 region 매칭
-   - 친구/랭킹 동기화
+엔드포인트와 아키텍처는 [`server/README.md`](./server/README.md) 참고.
+
+## 다음 작업 (V1 우선순위)
+
+1. **콜라주/영상 생성기** — Skia 또는 react-native-view-shot 기반 4컷/9컷 합성
+2. **인앱결제** — RevenueCat으로 광고 제거 / 프리미엄 구독
+3. **친구 추가 + 동행자 자동 인식** — 같은 시간/장소 사진 매칭
 
 자세한 로드맵은 [docs/PRD.md §9](./docs/PRD.md)를 참고하세요.
 
