@@ -1,23 +1,26 @@
-import React, { useEffect } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import { FlatList, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '@components/Card';
 import { ScreenHeader } from '@components/ScreenHeader';
 import { useTheme } from '@design/ThemeProvider';
 import { pickPastel, radius, spacing, typography } from '@design/tokens';
 import { useAppStore } from '@data/store';
+import { CollageTemplateId } from '@core/collageLayouts';
+import { CollageEditorScreen } from './CollageEditorScreen';
 
-const TEMPLATES = [
-  { id: '4cut', name: '4컷 콜라주', emoji: '🎞️', desc: '인스타 스토리 비율' },
-  { id: '9grid', name: '9컷 그리드', emoji: '🟦', desc: '피드용 정사각' },
+const TEMPLATES: Array<{ id: CollageTemplateId; name: string; emoji: string; desc: string }> = [
+  { id: 'fourcut', name: '4컷 콜라주', emoji: '🎞️', desc: '인스타 스토리 비율' },
+  { id: 'ninegrid', name: '9컷 그리드', emoji: '🟦', desc: '피드용 정사각' },
   { id: 'polaroid', name: '폴라로이드', emoji: '📸', desc: '레트로 무드' },
-  { id: 'video', name: '슬라이드쇼', emoji: '🎬', desc: 'BGM 자동 매칭' },
+  { id: 'magazine', name: '매거진', emoji: '📖', desc: '대표 1장 + 갤러리' },
 ];
 
 export function PhotobookScreen() {
   const { theme } = useTheme();
   const trips = useAppStore((s) => s.trips.filter((t) => t.isSignificant));
   const hydrate = useAppStore((s) => s.hydrateMockData);
+  const [editingTripId, setEditingTripId] = useState<string | null>(null);
 
   useEffect(() => {
     if (trips.length === 0) hydrate();
@@ -50,24 +53,42 @@ export function PhotobookScreen() {
                 { color: theme.text, marginTop: spacing.xl, marginBottom: spacing.md },
               ]}
             >
-              최근 여행
+              여행에서 만들기
+            </Text>
+            <Text
+              style={[typography.caption, { color: theme.textMuted, marginBottom: spacing.md }]}
+            >
+              카드를 탭하면 편집기가 열려요.
             </Text>
           </View>
         }
         data={trips}
         keyExtractor={(t) => t.id}
         renderItem={({ item }) => (
-          <Card style={[styles.tripCard, { backgroundColor: pickPastel(item.id) }]}>
-            <Text style={[typography.bodyStrong, { color: '#1B2330' }]}>{item.title}</Text>
-            <Text style={[typography.caption, { color: '#3B4554' }]}>
-              사진 {item.photoCount}장 · {item.startDate.slice(0, 10)}
-            </Text>
-            <Text style={[typography.caption, { color: '#3B4554', marginTop: spacing.sm }]}>
-              탭하여 콜라주 만들기 →
-            </Text>
-          </Card>
+          <Pressable onPress={() => setEditingTripId(item.id)}>
+            <Card style={[styles.tripCard, { backgroundColor: pickPastel(item.id) }]}>
+              <Text style={[typography.bodyStrong, { color: '#1B2330' }]}>{item.title}</Text>
+              <Text style={[typography.caption, { color: '#3B4554' }]}>
+                사진 {item.photoCount}장 · {item.startDate.slice(0, 10)}
+              </Text>
+              <Text style={[typography.caption, { color: '#3B4554', marginTop: spacing.sm }]}>
+                탭하여 콜라주 만들기 →
+              </Text>
+            </Card>
+          </Pressable>
         )}
       />
+
+      <Modal
+        visible={editingTripId !== null}
+        animationType="slide"
+        presentationStyle="fullScreen"
+        onRequestClose={() => setEditingTripId(null)}
+      >
+        {editingTripId && (
+          <CollageEditorScreen tripId={editingTripId} onClose={() => setEditingTripId(null)} />
+        )}
+      </Modal>
     </SafeAreaView>
   );
 }
