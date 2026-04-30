@@ -5,13 +5,13 @@ import { Card } from '@components/Card';
 import { ScreenHeader } from '@components/ScreenHeader';
 import { useTheme } from '@design/ThemeProvider';
 import { pickPastel, radius, spacing, typography } from '@design/tokens';
-import { useAppStore } from '@data/store';
+import { leafRegions, useAppStore } from '@data/store';
 import { Trip } from '@core/types';
 
 export function TimelineScreen() {
   const { theme } = useTheme();
   const trips = useAppStore((s) => s.trips);
-  const regions = useAppStore((s) => s.regions[s.selectedCountry] ?? []);
+  const regions = useAppStore(leafRegions);
   const hydrate = useAppStore((s) => s.hydrateMockData);
 
   useEffect(() => {

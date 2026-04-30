@@ -5,10 +5,12 @@ import { Country, Photo, Region, Trip, Visit } from '@core/types';
 import { processAssets, RawAsset } from '@core/photoProcessor';
 import { COUNTRIES, DEFAULT_COUNTRY } from './countries';
 import { KR_LEVEL1_REGIONS } from './koreaRegions';
+import { KR_LEVEL2_REGIONS } from './koreaSigungu';
 import { generateMockPhotos } from './mockPhotos';
 
 export type MapMode = 'region' | 'heatmap' | 'marker';
 export type MapLens = 'visited' | 'unvisited';
+export type RegionLevelChoice = 1 | 2;
 
 export type SyncStatus =
   | { kind: 'idle' }
@@ -20,7 +22,9 @@ export type SyncStatus =
 interface AppState {
   countries: Country[];
   selectedCountry: string;
-  regions: Record<string, Region[]>;
+  /** regions[countryCode][level] = Region[] */
+  regions: Record<string, Partial<Record<RegionLevelChoice, Region[]>>>;
+  regionLevel: RegionLevelChoice;
   photos: Photo[];
   trips: Trip[];
   visits: Visit[];
@@ -33,6 +37,7 @@ interface AppState {
   isMockData: boolean;
 
   setCountry: (code: string) => void;
+  setRegionLevel: (level: RegionLevelChoice) => void;
   setYearFilter: (year: number | 'all') => void;
   setMapMode: (mode: MapMode) => void;
   setMapLens: (lens: MapLens) => void;
@@ -48,7 +53,10 @@ const USER_ID = 'demo_user';
 const initial = {
   countries: COUNTRIES,
   selectedCountry: DEFAULT_COUNTRY,
-  regions: { KR: KR_LEVEL1_REGIONS },
+  regions: {
+    KR: { 1: KR_LEVEL1_REGIONS, 2: KR_LEVEL2_REGIONS },
+  } as Record<string, Partial<Record<RegionLevelChoice, Region[]>>>,
+  regionLevel: 1 as RegionLevelChoice,
   photos: [] as Photo[],
   trips: [] as Trip[],
   visits: [] as Visit[],
@@ -66,6 +74,7 @@ export const useAppStore = create<AppState>()(
       ...initial,
 
       setCountry: (code) => set({ selectedCountry: code }),
+      setRegionLevel: (level) => set({ regionLevel: level }),
       setYearFilter: (year) => set({ yearFilter: year }),
       setMapMode: (mode) => set({ mapMode: mode }),
       setMapLens: (lens) => set({ mapLens: lens }),
@@ -73,7 +82,9 @@ export const useAppStore = create<AppState>()(
 
       hydrateMockData: () => {
         const photos = generateMockPhotos();
-        const regions = get().regions[get().selectedCountry] ?? [];
+        // Always match against the most specific (highest level) region set so
+        // a photo's regionId is the leaf — parents are derived on the fly.
+        const regions = leafRegions(get());
         const result = processAssets(
           photos.map((p) => ({
             id: p.id,
@@ -93,7 +104,7 @@ export const useAppStore = create<AppState>()(
       },
 
       ingestAssets: (assets) => {
-        const regions = get().regions[get().selectedCountry] ?? [];
+        const regions = leafRegions(get());
         const result = processAssets(assets, { userId: USER_ID, regions });
         set({
           photos: result.photos,
@@ -126,6 +137,7 @@ export const useAppStore = create<AppState>()(
       storage: createJSONStorage(() => AsyncStorage),
       partialize: (state) => ({
         selectedCountry: state.selectedCountry,
+        regionLevel: state.regionLevel,
         photos: state.photos,
         trips: state.trips,
         visits: state.visits,
@@ -135,21 +147,61 @@ export const useAppStore = create<AppState>()(
         onboarded: state.onboarded,
         isMockData: state.isMockData,
       }),
-      version: 1,
+      version: 2,
     }
   )
 );
 
+export function activeRegions(
+  state: Pick<AppState, 'regions' | 'selectedCountry' | 'regionLevel'>
+): Region[] {
+  const byLevel = state.regions[state.selectedCountry];
+  return byLevel?.[state.regionLevel] ?? byLevel?.[1] ?? [];
+}
+
+/**
+ * Returns the most specific (leaf) regions the country provides, falling back
+ * to coarser levels if the deeper data isn't available. Photo matching always
+ * happens against leaves so parent visits can be derived without re-matching.
+ */
+export function leafRegions(
+  state: Pick<AppState, 'regions' | 'selectedCountry'>
+): Region[] {
+  const byLevel = state.regions[state.selectedCountry];
+  if (!byLevel) return [];
+  if (byLevel[2]?.length) return byLevel[2];
+  return byLevel[1] ?? [];
+}
+
+export function activeRegionsForLevel(
+  state: Pick<AppState, 'regions' | 'selectedCountry'>,
+  level: RegionLevelChoice
+): Region[] {
+  return state.regions[state.selectedCountry]?.[level] ?? [];
+}
+
 export function selectVisitedRegionIds(
-  state: Pick<AppState, 'photos' | 'yearFilter'>,
+  state: Pick<AppState, 'photos' | 'yearFilter' | 'regions' | 'selectedCountry'>,
   year?: number | 'all'
 ): Set<string> {
   const filter = year ?? state.yearFilter;
+  const leaves = leafRegions(state);
+  const parentOf = new Map<string, string | undefined>();
+  for (const r of leaves) parentOf.set(r.id, r.parentId);
+
   const ids = new Set<string>();
   for (const p of state.photos) {
     if (!p.regionId) continue;
     if (filter !== 'all' && new Date(p.takenAt).getFullYear() !== filter) continue;
     ids.add(p.regionId);
+    // Propagate visit up the parent chain so toggling between sido/sigungu
+    // shows the correct count without re-matching photos.
+    let parent = parentOf.get(p.regionId);
+    while (parent) {
+      if (ids.has(parent)) break;
+      ids.add(parent);
+      parent = parentOf.get(parent);
+    }
   }
   return ids;
 }

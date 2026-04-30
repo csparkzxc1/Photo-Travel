@@ -5,8 +5,13 @@ import { Pill } from '@components/Pill';
 import { ScreenHeader } from '@components/ScreenHeader';
 import { useTheme } from '@design/ThemeProvider';
 import { radius, shadows, spacing, typography } from '@design/tokens';
-import { selectAvailableYears, selectVisitedRegionIds, useAppStore } from '@data/store';
-import { RegionMap } from './RegionMap';
+import {
+  activeRegions,
+  selectAvailableYears,
+  selectVisitedRegionIds,
+  useAppStore,
+} from '@data/store';
+import { MapView } from './MapView';
 import { CountryPickerModal } from './CountryPickerModal';
 
 export function MapScreen() {
@@ -14,7 +19,12 @@ export function MapScreen() {
   const country = useAppStore((s) => s.selectedCountry);
   const setCountry = useAppStore((s) => s.setCountry);
   const countries = useAppStore((s) => s.countries);
-  const regions = useAppStore((s) => s.regions[country] ?? []);
+  const regions = useAppStore(activeRegions);
+  const regionLevel = useAppStore((s) => s.regionLevel);
+  const setRegionLevel = useAppStore((s) => s.setRegionLevel);
+  const hasLevel2 = useAppStore(
+    (s) => (s.regions[s.selectedCountry]?.[2]?.length ?? 0) > 0
+  );
   const photos = useAppStore((s) => s.photos);
   const yearFilter = useAppStore((s) => s.yearFilter);
   const setYearFilter = useAppStore((s) => s.setYearFilter);
@@ -37,7 +47,12 @@ export function MapScreen() {
   const visitedIds = useAppStore(selectVisitedRegionIds);
   const years = useAppStore(selectAvailableYears);
   const countryMeta = countries.find((c) => c.code === country);
-  const total = countryMeta?.totalRegions ?? regions.length;
+  const total = regions.length;
+  const visitedInActiveLevel = useMemo(() => {
+    const ids = new Set<string>();
+    for (const r of regions) if (visitedIds.has(r.id)) ids.add(r.id);
+    return ids;
+  }, [regions, visitedIds]);
 
   const filteredPhotos = useMemo(() => {
     if (yearFilter === 'all') return photos;
@@ -67,13 +82,30 @@ export function MapScreen() {
               onPress={() => setYearFilter(y)}
             />
           ))}
+          {hasLevel2 && (
+            <View style={{ width: 1, marginHorizontal: spacing.sm, backgroundColor: theme.border }} />
+          )}
+          {hasLevel2 && (
+            <>
+              <Pill
+                label="시도"
+                active={regionLevel === 1}
+                onPress={() => setRegionLevel(1)}
+              />
+              <Pill
+                label="시군구"
+                active={regionLevel === 2}
+                onPress={() => setRegionLevel(2)}
+              />
+            </>
+          )}
         </ScrollView>
       </View>
 
       <View style={styles.mapWrapper}>
-        <RegionMap
+        <MapView
           regions={regions}
-          visitedRegionIds={visitedIds}
+          visitedRegionIds={visitedInActiveLevel}
           photos={filteredPhotos.map((p) => ({ id: p.id, lat: p.lat, lng: p.lng }))}
           mode={mapMode}
           lens={mapLens}
@@ -103,11 +135,11 @@ export function MapScreen() {
         <View style={[styles.progressBadge, { backgroundColor: theme.surface, borderColor: theme.border }]}>
           <Text style={[typography.micro, { color: theme.textMuted }]}>방문</Text>
           <Text style={[typography.title, { color: theme.text }]}>
-            {visitedIds.size}
+            {visitedInActiveLevel.size}
             <Text style={[typography.body, { color: theme.textMuted }]}>{` / ${total}`}</Text>
           </Text>
           <Text style={[typography.micro, { color: theme.primary }]}>
-            {Math.round((visitedIds.size / Math.max(1, total)) * 100)}%
+            {Math.round((visitedInActiveLevel.size / Math.max(1, total)) * 100)}%
           </Text>
         </View>
       </View>

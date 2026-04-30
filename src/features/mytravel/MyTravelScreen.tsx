@@ -5,14 +5,14 @@ import { Card } from '@components/Card';
 import { ScreenHeader } from '@components/ScreenHeader';
 import { useTheme } from '@design/ThemeProvider';
 import { radius, spacing, typography } from '@design/tokens';
-import { selectVisitedRegionIds, useAppStore } from '@data/store';
+import { leafRegions, selectVisitedRegionIds, useAppStore } from '@data/store';
 import { haversineKm } from '@core/geo';
 
 export function MyTravelScreen() {
   const { theme } = useTheme();
   const photos = useAppStore((s) => s.photos);
   const trips = useAppStore((s) => s.trips);
-  const regions = useAppStore((s) => s.regions[s.selectedCountry] ?? []);
+  const regions = useAppStore(leafRegions);
   const visited = useAppStore((s) => selectVisitedRegionIds(s));
   const hydrate = useAppStore((s) => s.hydrateMockData);
 
