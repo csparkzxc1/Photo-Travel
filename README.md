@@ -6,20 +6,24 @@
 React Native (Expo) + TypeScript 기반이며, 6개 메인 탭과 사진→지역 매칭 / 여행 자동 클러스터링
 핵심 알고리즘이 동작하는 상태로 구현되어 있습니다.
 
-## 현재 구현된 범위 (v0.1.0)
+## 현재 구현된 범위 (v0.2.0)
 
 | 영역 | 상태 |
 |---|---|
 | **프로젝트 셋업** (Expo + TS + path aliases + Jest) | ✅ |
 | **디자인 시스템** (tokens, ThemeProvider, 라이트/다크) | ✅ |
 | **데이터 모델** (User / Photo / Region / Trip / Visit / Country) | ✅ |
-| **핵심 알고리즘** (point-in-polygon, region matcher, trip clusterer) | ✅ + 17 단위 테스트 |
+| **핵심 알고리즘** (point-in-polygon, region matcher, trip clusterer, photo processor) | ✅ + 24 단위 테스트 |
 | **네비게이션 셸** (6 bottom tabs) | ✅ |
 | **지도 화면** (SVG 폴리곤 렌더, 모드 토글, 진행률 뱃지, 연도 필터) | ✅ |
-| **타임라인 / 포토북 / 랭킹 / 나의 여행 / 설정** | ✅ (mock 기반) |
+| **국가 선택 모달** (검색 + 깃발) | ✅ |
+| **"안 가본 곳" 렌즈 모드** (PRD §11 차별화) | ✅ |
+| **타임라인 / 포토북 / 랭킹 / 나의 여행 / 설정** | ✅ |
 | **시드 데이터** (한국 광역시도 17개 + 데모 사진/여행) | ✅ |
-| 실제 갤러리 연동 (expo-media-library + EXIF) | ⏳ V0.2 |
-| MapLibre 통합 (production map) | ⏳ V0.2 |
+| **갤러리 동기화 파이프라인** (expo-media-library + EXIF + 권한 플로우) | ✅ |
+| **온보딩 플로우** (권한 요청 + 진행률 + 스킵) | ✅ |
+| **영구 스토어** (zustand + AsyncStorage) | ✅ |
+| MapLibre 통합 (production map) | ⏳ V0.3 |
 | 백엔드 API + PostGIS | ⏳ V1 |
 | 콜라주 생성기 / 영상 슬라이드쇼 | ⏳ V1 |
 | 인앱결제 / 광고 | ⏳ V1 |
@@ -34,6 +38,7 @@ src/
 │   ├── geo.ts                  point-in-polygon, haversine
 │   ├── regionMatcher.ts        GPS → Region (with fallback)
 │   ├── tripClusterer.ts        Photo[] → Trip[]
+│   ├── photoProcessor.ts       RawAsset[] → {photos, trips, visits, stats}
 │   └── __tests__/
 ├── data/              # 시드 데이터 + Zustand 스토어
 │   ├── countries.ts
@@ -45,12 +50,14 @@ src/
 │   └── ThemeProvider.tsx
 ├── components/        # 재사용 UI (Card, Pill, ScreenHeader)
 ├── features/          # 기능별 화면 (탭 단위)
-│   ├── map/
+│   ├── map/                    MapScreen, RegionMap, CountryPickerModal
 │   ├── timeline/
 │   ├── photobook/
 │   ├── ranking/
 │   ├── mytravel/
-│   └── settings/
+│   ├── settings/
+│   ├── onboarding/             권한 요청 + 첫 동기화
+│   └── sync/                   mediaLibrary, photoSync (orchestrator)
 └── navigation/
     └── RootNavigator.tsx
 ```
@@ -115,17 +122,37 @@ PRD §6.2 알고리즘 그대로 구현:
 - **Empty state도 예쁘게** — 모든 화면에 mock data 빈 상태 처리
 - **파스텔 자동 컬러링** — `pickPastel(seed)`로 인접 지역 색상 회피 (production은 그래프 컬러링)
 
-## 다음 작업 (V0.2 우선순위)
+## 동기화 파이프라인 (v0.2)
 
-1. **실제 사진 동기화**
-   - `expo-media-library`로 사진 메타 읽기
-   - EXIF GPS 추출 → `matchRegion`으로 region 부여 → 스토어 hydrate
-   - 백그라운드 sync (`expo-task-manager`)
+```
+사용자가 "동기화" 탭
+       ↓
+ensureMediaPermission()        ← expo-media-library 권한 흐름
+       ↓
+fetchGpsAssets()               ← 페이지네이션 + EXIF GPS 해상
+       ↓
+processAssets()                ← 순수 함수 (테스트 24개)
+       ├─ matchRegion          ← bbox + point-in-polygon + fallback
+       └─ clusterTrips         ← 24h/12h gap 룰 + significance 판정
+       ↓
+Zustand store (persist)        ← AsyncStorage에 사진/여행/통계 캐싱
+       ↓
+모든 화면 자동 리렌더
+```
 
-2. **MapLibre 교체**
+상태 머신: `idle → requesting → syncing(loaded, total) → success | error`.
+온보딩과 설정 화면이 같은 `syncStatus`를 구독합니다.
+
+## 다음 작업 (V0.3 우선순위)
+
+1. **MapLibre 교체**
    - 현재 `react-native-svg` 기반 단순 렌더 → MapLibre Native
    - 한국 시군구(229개) GeoJSON 자산 추가 (mapshaper로 단순화, ~5MB)
    - 히트맵 GPU 셰이더 활성화
+
+2. **백그라운드 동기화**
+   - `expo-task-manager` + `expo-background-fetch`
+   - 새 사진 감지 시 증분 처리 (전량 재처리 X)
 
 3. **백엔드 (Fastify + PostGIS)**
    - Drizzle 스키마 (User / Photo / Region / Trip / Visit)

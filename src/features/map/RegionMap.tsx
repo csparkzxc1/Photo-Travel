@@ -10,6 +10,8 @@ interface RegionMapProps {
   visitedRegionIds: Set<string>;
   photos?: Array<{ lat: number; lng: number; id: string }>;
   mode: 'region' | 'heatmap' | 'marker';
+  /** When 'unvisited', the *unvisited* regions are highlighted instead. */
+  lens?: 'visited' | 'unvisited';
 }
 
 /**
@@ -17,7 +19,13 @@ interface RegionMapProps {
  * so this looks like a stylised tile map; production swaps in MapLibre with full
  * GeoJSON polygons and clustered markers.
  */
-export function RegionMap({ regions, visitedRegionIds, photos = [], mode }: RegionMapProps) {
+export function RegionMap({
+  regions,
+  visitedRegionIds,
+  photos = [],
+  mode,
+  lens = 'visited',
+}: RegionMapProps) {
   const { theme } = useTheme();
   const [size, setSize] = React.useState({ w: 0, h: 0 });
 
@@ -52,10 +60,7 @@ export function RegionMap({ regions, visitedRegionIds, photos = [], mode }: Regi
   }, [regions, size.w, size.h]);
 
   return (
-    <View
-      style={[styles.container, { backgroundColor: theme.mapWater }]}
-      onLayout={onLayout}
-    >
+    <View style={[styles.container, { backgroundColor: theme.mapWater }]} onLayout={onLayout}>
       {projected && size.w > 0 && (
         <Svg width={size.w} height={size.h}>
           <G>
@@ -64,18 +69,16 @@ export function RegionMap({ regions, visitedRegionIds, photos = [], mode }: Regi
               const ring = (region.geometry.type === 'Polygon'
                 ? region.geometry.coordinates[0]
                 : region.geometry.coordinates[0][0]) as number[][];
-              const d = ring
-                .map((coord, i) => {
-                  const { x, y } = projected.project(coord[0], coord[1]);
-                  return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
-                })
-                .join(' ') + ' Z';
+              const d =
+                ring
+                  .map((coord, i) => {
+                    const { x, y } = projected.project(coord[0], coord[1]);
+                    return `${i === 0 ? 'M' : 'L'} ${x.toFixed(1)} ${y.toFixed(1)}`;
+                  })
+                  .join(' ') + ' Z';
 
-              const fill = mode === 'heatmap'
-                ? theme.mapLand
-                : visited
-                ? pickPastel(region.id)
-                : theme.mapUnvisited;
+              const fill = computeFill(visited, mode, lens, region.id, theme);
+              const opacity = computeOpacity(visited, mode, lens);
 
               return (
                 <Path
@@ -84,7 +87,7 @@ export function RegionMap({ regions, visitedRegionIds, photos = [], mode }: Regi
                   fill={fill}
                   stroke={theme.bg}
                   strokeWidth={1.5}
-                  opacity={mode === 'heatmap' && !visited ? 0.4 : 1}
+                  opacity={opacity}
                 />
               );
             })}
@@ -108,6 +111,30 @@ export function RegionMap({ regions, visitedRegionIds, photos = [], mode }: Regi
       )}
     </View>
   );
+}
+
+function computeFill(
+  visited: boolean,
+  mode: 'region' | 'heatmap' | 'marker',
+  lens: 'visited' | 'unvisited',
+  regionId: string,
+  theme: { mapLand: string; mapUnvisited: string }
+): string {
+  if (mode === 'heatmap') return theme.mapLand;
+  if (lens === 'unvisited') {
+    return visited ? theme.mapUnvisited : pickPastel(regionId);
+  }
+  return visited ? pickPastel(regionId) : theme.mapUnvisited;
+}
+
+function computeOpacity(
+  visited: boolean,
+  mode: 'region' | 'heatmap' | 'marker',
+  lens: 'visited' | 'unvisited'
+): number {
+  if (mode === 'heatmap') return visited ? 1 : 0.4;
+  if (lens === 'unvisited') return visited ? 0.35 : 1;
+  return 1;
 }
 
 const styles = StyleSheet.create({

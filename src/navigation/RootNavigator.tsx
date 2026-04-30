@@ -3,12 +3,14 @@ import { Text } from 'react-native';
 import { NavigationContainer, DefaultTheme, DarkTheme } from '@react-navigation/native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useTheme } from '@design/ThemeProvider';
+import { useAppStore } from '@data/store';
 import { MapScreen } from '@features/map/MapScreen';
 import { TimelineScreen } from '@features/timeline/TimelineScreen';
 import { PhotobookScreen } from '@features/photobook/PhotobookScreen';
 import { RankingScreen } from '@features/ranking/RankingScreen';
 import { MyTravelScreen } from '@features/mytravel/MyTravelScreen';
 import { SettingsScreen } from '@features/settings/SettingsScreen';
+import { OnboardingScreen } from '@features/onboarding/OnboardingScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -32,6 +34,17 @@ const TAB_LABELS: Record<string, string> = {
 
 export function RootNavigator() {
   const { theme, name } = useTheme();
+  const onboarded = useAppStore((s) => s.onboarded);
+  const [showOnboarding, setShowOnboarding] = React.useState(!onboarded);
+
+  React.useEffect(() => {
+    if (onboarded) setShowOnboarding(false);
+  }, [onboarded]);
+
+  if (showOnboarding) {
+    return <OnboardingScreen onDone={() => setShowOnboarding(false)} />;
+  }
+
   const navTheme = name === 'dark' ? DarkTheme : DefaultTheme;
   const themed = {
     ...navTheme,
