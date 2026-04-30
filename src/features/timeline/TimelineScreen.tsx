@@ -1,12 +1,14 @@
-import React, { useEffect, useMemo } from 'react';
-import { FlatList, StyleSheet, Text, View } from 'react-native';
+import React, { useEffect, useMemo, useState } from 'react';
+import { FlatList, Modal, StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { AdSlot } from '@components/AdSlot';
 import { Card } from '@components/Card';
 import { ScreenHeader } from '@components/ScreenHeader';
 import { useTheme } from '@design/ThemeProvider';
 import { pickPastel, radius, spacing, typography } from '@design/tokens';
 import { leafRegions, useAppStore } from '@data/store';
 import { Trip } from '@core/types';
+import { PaywallScreen } from '@features/purchases/PaywallScreen';
 
 export function TimelineScreen() {
   const { theme } = useTheme();
@@ -22,6 +24,7 @@ export function TimelineScreen() {
     () => [...trips].sort((a, b) => b.startDate.localeCompare(a.startDate)),
     [trips]
   );
+  const [paywall, setPaywall] = useState(false);
 
   const regionName = (id: string) =>
     regions.find((r) => r.id === id)?.name_ko ?? id;
@@ -29,6 +32,7 @@ export function TimelineScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: theme.bg }} edges={['top']}>
       <ScreenHeader title="타임라인" subtitle="자동 그룹핑된 여행 기록" />
+      <AdSlot onUpgrade={() => setPaywall(true)} />
       <FlatList
         data={sorted}
         keyExtractor={(t) => t.id}
@@ -42,6 +46,14 @@ export function TimelineScreen() {
           </Text>
         }
       />
+      <Modal
+        visible={paywall}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPaywall(false)}
+      >
+        <PaywallScreen onClose={() => setPaywall(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }

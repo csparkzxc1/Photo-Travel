@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { ActivityIndicator, Alert, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
+import { ActivityIndicator, Alert, Modal, Pressable, ScrollView, StyleSheet, Switch, Text, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Card } from '@components/Card';
 import { ScreenHeader } from '@components/ScreenHeader';
@@ -11,6 +11,7 @@ import {
   registerBackgroundSync,
   unregisterBackgroundSync,
 } from '@features/sync/backgroundSync';
+import { PaywallScreen } from '@features/purchases/PaywallScreen';
 
 export function SettingsScreen() {
   const { theme } = useTheme();
@@ -20,8 +21,10 @@ export function SettingsScreen() {
   const bgEnabled = useAppStore((s) => s.backgroundSyncEnabled);
   const lastBgRun = useAppStore((s) => s.lastBackgroundRunAt);
   const reset = useAppStore((s) => s.reset);
+  const entitlements = useAppStore((s) => s.entitlements);
   const [busy, setBusy] = useState(false);
   const [bgBusy, setBgBusy] = useState(false);
+  const [paywall, setPaywall] = useState(false);
 
   const handleSync = async () => {
     setBusy(true);
@@ -109,8 +112,28 @@ export function SettingsScreen() {
 
         <SectionLabel>구독</SectionLabel>
         <Card style={{ paddingVertical: 0 }}>
-          <SettingRow label="광고 제거 (₩2,900/월)" isLast={false} />
-          <SettingRow label="프리미엄 (₩4,900/월)" isLast={true} />
+          <Pressable
+            onPress={() => setPaywall(true)}
+            style={[styles.row, styles.rowBorder, { borderBottomColor: theme.border }]}
+          >
+            <View style={{ flex: 1 }}>
+              <Text style={[typography.body, { color: theme.text }]}>
+                {entitlements.premium ? '프리미엄 사용 중' : '프리미엄으로 업그레이드'}
+              </Text>
+              <Text style={[typography.caption, { color: theme.textMuted, marginTop: 2 }]}>
+                {entitlements.premium
+                  ? '4K 콜라주, 영상 슬라이드쇼, AI 추천이 활성화됨'
+                  : '광고 제거 + 무제한 콜라주 + 영상 슬라이드쇼'}
+              </Text>
+            </View>
+            <Text style={{ color: theme.textSubtle, fontSize: 18 }}>›</Text>
+          </Pressable>
+          <View style={styles.row}>
+            <Text style={[typography.body, { color: theme.text, flex: 1 }]}>광고 표시</Text>
+            <Text style={[typography.body, { color: theme.textMuted }]}>
+              {entitlements.adFree ? '제거됨' : '기본 표시'}
+            </Text>
+          </View>
         </Card>
 
         <SectionLabel>계정</SectionLabel>
@@ -123,9 +146,18 @@ export function SettingsScreen() {
         </Card>
 
         <Text style={[typography.micro, { color: theme.textSubtle, textAlign: 'center' }]}>
-          Photo Travel v0.2.0 · 2026.04.30
+          Photo Travel v1.0.0 · 2026.04.30
         </Text>
       </ScrollView>
+
+      <Modal
+        visible={paywall}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => setPaywall(false)}
+      >
+        <PaywallScreen onClose={() => setPaywall(false)} />
+      </Modal>
     </SafeAreaView>
   );
 }

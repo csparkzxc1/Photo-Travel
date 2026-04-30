@@ -3,6 +3,7 @@ import { create } from 'zustand';
 import { createJSONStorage, persist } from 'zustand/middleware';
 import { Country, Photo, Region, Trip, Visit } from '@core/types';
 import { mergeAssets, processAssets, RawAsset } from '@core/photoProcessor';
+import { Entitlements, NO_ENTITLEMENTS } from '@features/purchases/types';
 import { COUNTRIES, DEFAULT_COUNTRY } from './countries';
 import { KR_LEVEL1_REGIONS } from './koreaRegions';
 import { KR_LEVEL2_REGIONS } from './koreaSigungu';
@@ -41,6 +42,7 @@ interface AppState {
   /** Wall-clock time of the last *background* sync attempt (success or empty). */
   lastBackgroundRunAt: string | null;
   backgroundSyncEnabled: boolean;
+  entitlements: Entitlements;
 
   setCountry: (code: string) => void;
   setRegionLevel: (level: RegionLevelChoice) => void;
@@ -49,6 +51,7 @@ interface AppState {
   setMapLens: (lens: MapLens) => void;
   setBackgroundSyncEnabled: (on: boolean) => void;
   markBackgroundRun: (at: string) => void;
+  setEntitlements: (e: Entitlements) => void;
   markOnboarded: () => void;
   hydrateMockData: () => void;
   /** Replace-all ingest (foreground full sync). */
@@ -87,6 +90,7 @@ const initial = {
   lastSyncedAtMs: null as number | null,
   lastBackgroundRunAt: null as string | null,
   backgroundSyncEnabled: false,
+  entitlements: { ...NO_ENTITLEMENTS } as Entitlements,
 };
 
 export const useAppStore = create<AppState>()(
@@ -101,6 +105,7 @@ export const useAppStore = create<AppState>()(
       setMapLens: (lens) => set({ mapLens: lens }),
       setBackgroundSyncEnabled: (on) => set({ backgroundSyncEnabled: on }),
       markBackgroundRun: (at) => set({ lastBackgroundRunAt: at }),
+      setEntitlements: (e) => set({ entitlements: e }),
       markOnboarded: () => set({ onboarded: true }),
 
       hydrateMockData: () => {
@@ -201,8 +206,9 @@ export const useAppStore = create<AppState>()(
         lastSyncedAtMs: state.lastSyncedAtMs,
         lastBackgroundRunAt: state.lastBackgroundRunAt,
         backgroundSyncEnabled: state.backgroundSyncEnabled,
+        entitlements: state.entitlements,
       }),
-      version: 3,
+      version: 4,
     }
   )
 );
